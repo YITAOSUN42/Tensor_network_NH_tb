@@ -134,45 +134,38 @@ function build_hamiltonian_flux_1_4(N::Int;
 
     dim = N * N
     H = sparse ? spzeros(ComplexF64, dim, dim) : zeros(ComplexF64, dim, dim)
-    
-    # 磁通量因子 alpha = 1/4 (每个格子 pi/2 flux)
+ 
     α = 1/2
 
     for x in 1:N, y in 1:N
         j = idx(x, y, N)
-
-        # 1. On-site potential (保持不变)
+ 
         Vx = cos(2π*β1*(x - 1) + ϕ)
         Vy = cos(2π*β2*(y - 1) + ϕ)
         H[j, j] = 1im * 2 * λ * Vx * Vy
-
-        # 2. Hopping in x direction (通常设为实数)
+ 
         if x + 1 ≤ N
             k = idx(x + 1, y, N)
             tx_eff = mod(x,2) == 0 ? tx1 : tx2
             #tx_eff = isodd(x + y) ? tx1 : tx2
 
-            # 引入非厄密性 gamma
+     
             H[j, k] = tx_eff - γ
             H[k, j] = tx_eff + γ
         end
-
-        # 3. Hopping in y direction (注入 Peierls 相位)
+ 
         if y + 1 ≤ N
             k = idx(x, y + 1, N)
             ty_eff = mod(y,2) == 0 ? ty1 : ty2
             #ty_eff = isodd(x + y) ? ty1 : ty2
-            # 每个格子 pi/2 flux，意味着相位随 x 增加：exp(i * 2π * α * x)
-            # 注意：这里的相位取决于当前格子的坐标 x
+        
             phase = exp(2π * 1im * α * (x - 1))
-            
-            # 将非厄密修正与相位结合
-            # 这里的逻辑是：在原有的跃迁强度上施加手性相位
+    
             H[j, k] = (ty_eff - γ) * phase
-            H[k, j] = (ty_eff + γ) * conj(phase) # 逆向跃迁取共轭相位
+            H[k, j] = (ty_eff + γ) * conj(phase)  
         end
         V0 = 0. 
-       # # 这里的 0.5 位移是为了让 4x4 的中心 (2.5, 2.5) 成为势能最低点
+   
         V_2x2 = V0 * (cos(π/4 * (x - 2.5)   )^2 + cos(π/4 * (y - 2.5))^2)  
 
         H[j, j] +=  V_2x2
