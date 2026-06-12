@@ -8,12 +8,12 @@ real-space spectral functions with a kernel polynomial method.
 
 ## Contents
 
-- `source_test.jl` and `skin_ed.ipynb`: exact-diagonalization checks for small
+- `source_ed.jl` and `small_ed.ipynb`: exact-diagonalization checks for small
   systems.
 - `2D_lattice.jl`, `NHtk.jl`, and `extra_util.jl`: tensor-network utilities.
-- `test.jl`: script version of the large-system tensor-network calculation.
-- `cubic_trial.ipynb`: notebook version of `test.jl`, organized into
+- `cube_tensor_script.jl`: script version of the large-system tensor-network calculation.
+- `cubic_tensor_demo.ipynb`: notebook version of `test.jl`, organized into
   step-by-step cells for the paper demo.
 
-For a quick smoke test, reduce `L` and `kpm_order` in `test.jl` or
-`cubic_trial.ipynb` before running the full calculation.
+For a quick smoke test, reduce `L` and `kpm_order` in `cube_tensor_script.jl` or
+`cubic_tensor_demo.ipynb` before running the full calculation.
