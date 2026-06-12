@@ -15,38 +15,35 @@ function concatenate_MPOs(mpo1::MPO, site1::Vector{<:Index}, mpo2::MPO, site2::V
     N1 = length(mpo1)
     N2 = length(mpo2)
     
-    # 1. 构造新的物理索引序列
-    # 将 site1 (x1...xn) 和 site2 (y1...yn) 拼接
+    # 1. Build the combined physical-index sequence by appending site2 after site1.
     new_sites = vcat(site1, site2)
     
     tensors = Vector{ITensor}(undef, N1 + N2)
     
-    # 2. 复制第一个 MPO 的张量
+    # 2. Copy the tensors from the first MPO.
     for i in 1:N1
         tensors[i] = mpo1[i]
     end
     
-    # 3. 处理连接处的 Link 索引
-    # 获取 mpo1 的最后一个 link 和 mpo2 的第一个 link
+    # 3. Handle the Link index at the join between the two MPOs.
     l1 = linkind(mpo1, N1)
-    l2 = linkind(mpo2, 0) # 逻辑上的左端 link
+    l2 = linkind(mpo2, 0) # Logical left-edge Link.
     
-    # 创建一个新的中间 link 索引，确保两个 MPO 能连起来
-    # 维度设为 1，因为这是 Direct Product（直积）
+    # Use a dimension-1 middle Link because this is a direct product.
     mid_link = Index(1, "Link,l=$N1")
     
-    # 调整 mpo1 最后一个张量：替换原有的右 link 或新增一个 link
+    # Adjust the last tensor of mpo1: replace its right Link or add one.
     if !isnothing(l1)
         tensors[N1] = replaceind(tensors[N1], l1 => mid_link)
     else
         tensors[N1] = tensors[N1] * setelt(mid_link => 1)
     end
     
-    # 调整 mpo2 序列并连接到末尾
+    # Adjust the mpo2 sequence and append it to the result.
     for i in 1:N2
         T = mpo2[i]
         if i == 1
-            # 替换 mpo2 第一个张量的左 link
+            # Replace the left Link of the first mpo2 tensor.
             if !isnothing(l2)
                 tensors[N1 + 1] = replaceind(T, l2 => mid_link)
             else
