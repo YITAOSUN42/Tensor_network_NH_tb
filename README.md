@@ -1,6 +1,6 @@
 # Tensor_network_NH_tb
 
-[![arXiv](https://img.shields.io/badge/arXiv-2503.04373-B31B1B)](https://arxiv.org/abs/2606.16424)
+[![arXiv](https://img.shields.io/badge/arXiv-2606.16424-B31B1B)](https://arxiv.org/abs/2606.16424)
 
 The Demo code for the preprint arXiv:2606.16424. This repository shows how to encode very large non-Hermitian tight-binding
 Hamiltonians in a binary tensor-network representation and how to evaluate
