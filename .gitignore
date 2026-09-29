@@ -6,4 +6,6 @@
 *.npy
 *.png
 *.pdf
-Manifest.toml
+/outputs/
+__pycache__/
+*.ji

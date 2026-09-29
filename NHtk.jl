@@ -1,3 +1,5 @@
+# Legacy helper routines are retained for the original notebooks.
+# Revised examples use KPM_ldos_bysite_streaming below via src/RevisedTN.jl.
 using ITensors
 using ITensorMPS
 using QuanticsTCI
@@ -323,8 +325,10 @@ end
 function up_down_vecs(index,sites)
     N = length(sites)
 
-    up_vec = randomMPS(ComplexF64,sites,to_binary_vector(Int(index),Int(log2(2^N))))
-    dn_vec = randomMPS(ComplexF64,sites,to_binary_vector(Int(index + 2^(N-1)),Int(log2(2^N))))
+    # Fixed computational basis states, with identical phase conventions for
+    # the two auxiliary sectors and no consumption of the random-number stream.
+    up_vec = MPS(ComplexF64,sites,to_binary_vector(Int(index),N))
+    dn_vec = MPS(ComplexF64,sites,to_binary_vector(Int(index + 2^(N-1)),N))
     
     return up_vec, dn_vec
 end
@@ -403,4 +407,125 @@ function get_ldos(mpo,size,tot_size )
 
     end
     return mat
+end
+
+
+"""
+    KPM_ldos_bysite_streaming(H, n, index, scale, sites, I_ldn; kwargs...)
+
+Revised MPS recurrence used for the response calculations. `H` is the
+UNSCALED Hermitized MPO; it is divided by `scale` exactly once here. `I_ldn`
+is the derivative with respect to the rescaled conjugate energy and has no
+extra scale factor. `n` counts odd moments, through polynomial order `2n-1`.
+
+Only consecutive ordinary and derivative MPSs are retained. Odd moments are
+contracted with the fixed probe before scalar summation. All recurrence
+applications and additions use density-matrix compression with the given
+`maxdim` (chi) and `cutoff`. Hamiltonian construction is separate.
+
+The result is the complex scaled density. Divide by `scale^2` to obtain the
+physical density. `return_moments=true` also returns the odd scalar moments.
+`observer(m, moment, t, d)` is called at each odd order `2m-1`; it must not
+mutate or retain the MPSs if constant recurrence storage is desired.
+
+The scalar weights and prefactor follow the production convention. This
+avoids the final MPS-sum compression; it is not a claim of bitwise identity
+with the original stored-MPS implementation.
+"""
+function KPM_ldos_bysite_streaming(
+    H,
+    n::Integer,
+    index::Integer,
+    scale::Real,
+    sites,
+    I_ldn;
+    maxdim::Integer=100,
+    cutoff::Real=1e-8,
+    progress_every::Integer=0,
+    return_moments::Bool=false,
+    observer=nothing,
+)
+    n > 0 || throw(ArgumentError("n must be positive"))
+    isfinite(scale) && scale > 0 || throw(ArgumentError("scale must be finite and positive"))
+    maxdim > 0 || throw(ArgumentError("maxdim must be positive"))
+    isfinite(cutoff) && cutoff >= 0 || throw(ArgumentError("cutoff must be nonnegative"))
+    progress_every >= 0 ||
+        throw(ArgumentError("progress_every must be nonnegative"))
+
+    0 <= index < 2^(length(sites) - 1) ||
+        throw(ArgumentError("index must be a zero-based physical site"))
+
+    total_orders = 2 * n
+    angle = pi / (total_orders + 1)
+    jackson_kernel = [
+        (total_orders - order + 1) * cos(angle * order) +
+        sin(angle * order) / tan(angle)
+        for order in 0:(total_orders - 1)
+    ]
+
+    scaled_ham = H / scale
+    up_vec, dn_vec = up_down_vecs(index, sites)
+
+    t_prev = up_vec
+    t_curr = apply(scaled_ham, t_prev; maxdim=maxdim, cutoff=cutoff, alg="densitymatrix")
+    d_prev = 0 * up_vec
+    d_curr = dn_vec
+
+    # This is list entry l=2 in get_energy_from_T_MPS: F_1 with
+    # jackson_kernel[l-1] == jackson_kernel[1].
+    first_moment = inner(dn_vec, d_curr)
+    moments = return_moments ? Vector{ComplexF64}(undef, n) : nothing
+    return_moments && (moments[1] = first_moment)
+    weighted_sum = jackson_kernel[1] * first_moment
+    observer === nothing || observer(1, first_moment, t_curr, d_curr)
+
+    for list_index in 3:total_orders
+        d_next = +(
+            2 * apply(I_ldn, t_curr; maxdim=maxdim, cutoff=cutoff, alg="densitymatrix"),
+            2 * apply(scaled_ham, d_curr; maxdim=maxdim, cutoff=cutoff, alg="densitymatrix");
+            maxdim=maxdim,
+            cutoff=cutoff,
+            alg="densitymatrix",
+        )
+        d_next = +(
+            d_next,
+            -d_prev;
+            maxdim=maxdim,
+            cutoff=cutoff,
+            alg="densitymatrix",
+        )
+
+        t_next = +(
+            2 * apply(scaled_ham, t_curr; maxdim=maxdim, cutoff=cutoff, alg="densitymatrix"),
+            -t_prev;
+            maxdim=maxdim,
+            cutoff=cutoff,
+            alg="densitymatrix",
+        )
+
+        t_prev, t_curr = t_curr, t_next
+        d_prev, d_curr = d_curr, d_next
+
+        if iseven(list_index)
+            sign = isodd(list_index ÷ 2) ? 1.0 : -1.0
+            moment = inner(dn_vec, d_curr)
+            return_moments && (moments[list_index ÷ 2] = moment)
+            observer === nothing || observer(list_index ÷ 2, moment, t_curr, d_curr)
+            weighted_sum += (
+                sign * jackson_kernel[list_index - 1] * moment
+            )
+        end
+
+        if progress_every > 0 &&
+           (list_index == total_orders || list_index % progress_every == 0)
+            println("KPM order $(list_index - 1)/$(total_orders - 1)")
+            flush(stdout)
+        end
+    end
+
+    scaled_density = (2 / (pi^2 * (total_orders + 1))) * weighted_sum
+    isfinite(scaled_density) || error(
+        "Non-finite TN NHKPM density: check scale, maxdim, cutoff, and the MPO."
+    )
+    return return_moments ? (scaled_density=scaled_density, moments=moments) : scaled_density
 end
